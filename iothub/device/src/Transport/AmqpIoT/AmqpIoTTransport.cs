@@ -37,6 +37,12 @@ namespace Microsoft.Azure.Devices.Client.Transport.AmqpIoT
                 Port = AmqpConstants.DefaultSecurePort,
             };
 
+            if (amqpTransportSettings.TcpTransportBufferSize != null)
+            {
+                tcpTransportSettings.SendBufferSize = (int) amqpTransportSettings.TcpTransportBufferSize;
+                tcpTransportSettings.ReceiveBufferSize = (int) amqpTransportSettings.TcpTransportBufferSize;
+            }
+
             SslProtocols protocols = TlsVersions.Instance.Preferred;
 #if NET451
             // Requires hardcoding in NET451 otherwise yields error:

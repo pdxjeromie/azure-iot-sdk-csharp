@@ -17,6 +17,7 @@ namespace Microsoft.Azure.Devices.Client
         private readonly TransportType _transportType;
         private TimeSpan _operationTimeout;
         private TimeSpan _openTimeout;
+
         /// <summary>
         /// To enable certificate revocation check. Default to be false.
         /// </summary>
@@ -100,6 +101,11 @@ namespace Microsoft.Azure.Devices.Client
         /// Specify client-side heartbeat interval
         /// </summary>
         public TimeSpan IdleTimeout { get; set; }
+
+        /// <summary>
+        /// Specify the TCP socket send and receive buffer size
+        /// </summary>
+        public int? TcpTransportBufferSize { get; set; }
 
         /// <summary>
         /// The operation timeout
