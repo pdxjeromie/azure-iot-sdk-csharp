@@ -18,14 +18,11 @@ namespace Microsoft.Azure.Devices.E2ETests
     [TestCategory("IoTHub")]
     public partial class MessageSendE2ETests : IDisposable
     {
-        // Max message size is 256kb for IoT Hub, but the transport buffer contains protocol information along with the payload
-        private const int LargeMessageSize = 1024 * 255;
-
-        private const int BatchMessageCount = 5;
-        private readonly string _devicePrefix = $"E2E_{nameof(MessageSendE2ETests)}_";
-        private readonly string _modulePrefix = $"E2E_{nameof(MessageSendE2ETests)}_";
-        private static readonly string s_proxyServerAddress = Configuration.IoTHub.ProxyServerAddress;
-        private static readonly TestLogging s_log = TestLogging.GetInstance();
+        private const int MESSAGE_BATCH_COUNT = 5;
+        private readonly string DevicePrefix = $"E2E_{nameof(MessageSendE2ETests)}_";
+        private readonly string ModulePrefix = $"E2E_{nameof(MessageSendE2ETests)}_";
+        private static string ProxyServerAddress = Configuration.IoTHub.ProxyServerAddress;
+        private static TestLogging _log = TestLogging.GetInstance();
 
         private readonly ConsoleEventListener _listener;
 
@@ -89,7 +86,7 @@ namespace Microsoft.Azure.Devices.E2ETests
         public async Task Message_DeviceSendSingleMessage_Http_WithProxy()
         {
             Client.Http1TransportSettings httpTransportSettings = new Client.Http1TransportSettings();
-            httpTransportSettings.Proxy = new WebProxy(s_proxyServerAddress);
+            httpTransportSettings.Proxy = new WebProxy(ProxyServerAddress);
             ITransportSettings[] transportSettings = new ITransportSettings[] { httpTransportSettings };
 
             await SendSingleMessage(TestDeviceType.Sasl, transportSettings).ConfigureAwait(false);
@@ -114,7 +111,7 @@ namespace Microsoft.Azure.Devices.E2ETests
         public async Task Message_DeviceSendSingleMessage_AmqpWs_WithProxy()
         {
             Client.AmqpTransportSettings amqpTransportSettings = new Client.AmqpTransportSettings(Client.TransportType.Amqp_WebSocket_Only);
-            amqpTransportSettings.Proxy = new WebProxy(s_proxyServerAddress);
+            amqpTransportSettings.Proxy = new WebProxy(ProxyServerAddress);
             ITransportSettings[] transportSettings = new ITransportSettings[] { amqpTransportSettings };
 
             await SendSingleMessage(TestDeviceType.Sasl, transportSettings).ConfigureAwait(false);
@@ -126,7 +123,7 @@ namespace Microsoft.Azure.Devices.E2ETests
         {
             Client.Transport.Mqtt.MqttTransportSettings mqttTransportSettings =
                 new Client.Transport.Mqtt.MqttTransportSettings(Client.TransportType.Mqtt_WebSocket_Only);
-            mqttTransportSettings.Proxy = new WebProxy(s_proxyServerAddress);
+            mqttTransportSettings.Proxy = new WebProxy(ProxyServerAddress);
             ITransportSettings[] transportSettings = new ITransportSettings[] { mqttTransportSettings };
 
             await SendSingleMessage(TestDeviceType.Sasl, transportSettings).ConfigureAwait(false);
@@ -137,7 +134,7 @@ namespace Microsoft.Azure.Devices.E2ETests
         public async Task Message_ModuleSendSingleMessage_AmqpWs_WithProxy()
         {
             Client.AmqpTransportSettings amqpTransportSettings = new Client.AmqpTransportSettings(Client.TransportType.Amqp_WebSocket_Only);
-            amqpTransportSettings.Proxy = new WebProxy(s_proxyServerAddress);
+            amqpTransportSettings.Proxy = new WebProxy(ProxyServerAddress);
             ITransportSettings[] transportSettings = new ITransportSettings[] { amqpTransportSettings };
 
             await SendSingleMessageModule(transportSettings).ConfigureAwait(false);
@@ -149,7 +146,7 @@ namespace Microsoft.Azure.Devices.E2ETests
         {
             Client.Transport.Mqtt.MqttTransportSettings mqttTransportSettings =
                 new Client.Transport.Mqtt.MqttTransportSettings(Client.TransportType.Mqtt_WebSocket_Only);
-            mqttTransportSettings.Proxy = new WebProxy(s_proxyServerAddress);
+            mqttTransportSettings.Proxy = new WebProxy(ProxyServerAddress);
             ITransportSettings[] transportSettings = new ITransportSettings[] { mqttTransportSettings };
 
             await SendSingleMessageModule(transportSettings).ConfigureAwait(false);
@@ -217,31 +214,11 @@ namespace Microsoft.Azure.Devices.E2ETests
             await SendBatchMessages(TestDeviceType.X509, Client.TransportType.Http1).ConfigureAwait(false);
         }
 
-        [DataTestMethod]
-        [DataRow(TestDeviceType.Sasl, Client.TransportType.Amqp_Tcp_Only)]
-        [DataRow(TestDeviceType.Sasl, Client.TransportType.Amqp_WebSocket_Only)]
-        [DataRow(TestDeviceType.Sasl, Client.TransportType.Mqtt_Tcp_Only)]
-        [DataRow(TestDeviceType.Sasl, Client.TransportType.Mqtt_WebSocket_Only)]
-        [DataRow(TestDeviceType.Sasl, Client.TransportType.Http1)]
-        [DataRow(TestDeviceType.X509, Client.TransportType.Amqp_Tcp_Only)]
-        [DataRow(TestDeviceType.X509, Client.TransportType.Amqp_WebSocket_Only)]
-        [DataRow(TestDeviceType.X509, Client.TransportType.Mqtt_Tcp_Only)]
-        [DataRow(TestDeviceType.X509, Client.TransportType.Mqtt_WebSocket_Only)]
-        [DataRow(TestDeviceType.X509, Client.TransportType.Http1)]
-        public async Task DeviceClient_SendLargeMessageAsync(TestDeviceType testDeviceType, Client.TransportType transportType)
-        {
-            TestDevice testDevice = await TestDevice.GetTestDeviceAsync(_devicePrefix, testDeviceType).ConfigureAwait(false);
-            using DeviceClient deviceClient = testDevice.CreateDeviceClient(transportType);
-
-            using var message = new Client.Message(Encoding.UTF8.GetBytes(new string('*', LargeMessageSize)));
-            await deviceClient.SendEventAsync(message).ConfigureAwait(false);
-        }
-
         [TestMethod]
         [ExpectedException(typeof(MessageTooLargeException))]
         public async Task Message_ClientThrowsForMqttTopicNameTooLong()
         {
-            TestDevice testDevice = await TestDevice.GetTestDeviceAsync(_devicePrefix).ConfigureAwait(false);
+            TestDevice testDevice = await TestDevice.GetTestDeviceAsync(DevicePrefix).ConfigureAwait(false);
             using DeviceClient deviceClient = testDevice.CreateDeviceClient(Client.TransportType.Mqtt);
 
             await deviceClient.OpenAsync().ConfigureAwait(false);
@@ -260,7 +237,7 @@ namespace Microsoft.Azure.Devices.E2ETests
 
         private async Task SendSingleMessage(TestDeviceType type, Client.TransportType transport)
         {
-            TestDevice testDevice = await TestDevice.GetTestDeviceAsync(_devicePrefix, type).ConfigureAwait(false);
+            TestDevice testDevice = await TestDevice.GetTestDeviceAsync(DevicePrefix, type).ConfigureAwait(false);
             using DeviceClient deviceClient = testDevice.CreateDeviceClient(transport);
 
             await deviceClient.OpenAsync().ConfigureAwait(false);
@@ -270,7 +247,7 @@ namespace Microsoft.Azure.Devices.E2ETests
 
         private async Task SendBatchMessages(TestDeviceType type, Client.TransportType transport)
         {
-            TestDevice testDevice = await TestDevice.GetTestDeviceAsync(_devicePrefix, type).ConfigureAwait(false);
+            TestDevice testDevice = await TestDevice.GetTestDeviceAsync(DevicePrefix, type).ConfigureAwait(false);
             using DeviceClient deviceClient = testDevice.CreateDeviceClient(transport);
 
             await deviceClient.OpenAsync().ConfigureAwait(false);
@@ -280,7 +257,7 @@ namespace Microsoft.Azure.Devices.E2ETests
 
         private async Task SendSingleMessage(TestDeviceType type, ITransportSettings[] transportSettings)
         {
-            TestDevice testDevice = await TestDevice.GetTestDeviceAsync(_devicePrefix, type).ConfigureAwait(false);
+            TestDevice testDevice = await TestDevice.GetTestDeviceAsync(DevicePrefix, type).ConfigureAwait(false);
             using DeviceClient deviceClient = testDevice.CreateDeviceClient(transportSettings);
 
             await deviceClient.OpenAsync().ConfigureAwait(false);
@@ -290,7 +267,7 @@ namespace Microsoft.Azure.Devices.E2ETests
 
         private async Task SendSingleMessageModule(ITransportSettings[] transportSettings)
         {
-            TestModule testModule = await TestModule.GetTestModuleAsync(_devicePrefix, _modulePrefix).ConfigureAwait(false);
+            TestModule testModule = await TestModule.GetTestModuleAsync(DevicePrefix, ModulePrefix).ConfigureAwait(false);
             using var moduleClient = ModuleClient.CreateFromConnectionString(testModule.ConnectionString, transportSettings);
 
             await moduleClient.OpenAsync().ConfigureAwait(false);
@@ -318,7 +295,7 @@ namespace Microsoft.Azure.Devices.E2ETests
             try
             {
                 var props = new List<Tuple<string, string>>();
-                for (int i = 0; i < BatchMessageCount; i++)
+                for (int i = 0; i < MESSAGE_BATCH_COUNT; i++)
                 {
                     (Client.Message testMessage, string messageId, string payload, string p1Value) = ComposeD2cTestMessage();
                     messages.Add(testMessage);
@@ -361,7 +338,7 @@ namespace Microsoft.Azure.Devices.E2ETests
             var payload = Guid.NewGuid().ToString();
             var p1Value = Guid.NewGuid().ToString();
 
-            s_log.WriteLine($"{nameof(ComposeD2cTestMessage)}: messageId='{messageId}' payload='{payload}' p1Value='{p1Value}'");
+            _log.WriteLine($"{nameof(ComposeD2cTestMessage)}: messageId='{messageId}' payload='{payload}' p1Value='{p1Value}'");
             var message = new Client.Message(Encoding.UTF8.GetBytes(payload))
             {
                 MessageId = messageId,
