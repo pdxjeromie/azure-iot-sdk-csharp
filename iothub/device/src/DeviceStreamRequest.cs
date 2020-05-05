@@ -19,7 +19,7 @@ namespace Microsoft.Azure.Devices.Client
         /// </summary>
         /// <param name="requestId">ID of this request.</param>
         /// <param name="name">Name of the stream</param>
-        /// <param name="uri">Uri to the Device Streaming gateway</param>
+        /// <param name="uri">Uri to the device streaming gateway</param>
         /// <param name="authorizationToken">Authorization token used to connect to the gateway</param>
         public DeviceStreamRequest(String requestId, string name, Uri uri, string authorizationToken)
         {
