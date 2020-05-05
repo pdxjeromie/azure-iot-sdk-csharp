@@ -9,7 +9,6 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Azure.Devices.Client;
 using Microsoft.Azure.Devices.Client.Exceptions;
-using Microsoft.Azure.Devices.Client.Transport.Mqtt;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Microsoft.Azure.Devices.E2ETests
@@ -19,176 +18,207 @@ namespace Microsoft.Azure.Devices.E2ETests
     [TestCategory("IoTHub")]
     public partial class MessageSendE2ETests : IDisposable
     {
-        private const int BatchMessageCount = 5;
+        private const int MESSAGE_BATCH_COUNT = 5;
+        private readonly string DevicePrefix = $"E2E_{nameof(MessageSendE2ETests)}_";
+        private readonly string ModulePrefix = $"E2E_{nameof(MessageSendE2ETests)}_";
+        private static string ProxyServerAddress = Configuration.IoTHub.ProxyServerAddress;
+        private static TestLogging _log = TestLogging.GetInstance();
 
-        // Max message size is 256kb for IoT Hub, but the transport buffer contains protocol information along with the payload
-        private const int LargeMessageSize = 1024 * 255;
+        private readonly ConsoleEventListener _listener;
 
-        private readonly string _devicePrefix = $"E2E_{nameof(MessageSendE2ETests)}_";
-        private readonly string _modulePrefix = $"E2E_{nameof(MessageSendE2ETests)}_";
-        private static readonly string s_proxyServerAddress = Configuration.IoTHub.ProxyServerAddress;
-        private static readonly TestLogging s_log = TestLogging.GetInstance();
-
-        private readonly ConsoleEventListener _listener = TestConfig.StartEventListener();
-
-        [DataTestMethod]
-        [DataRow(TestDeviceType.Sasl, Client.TransportType.Amqp_Tcp_Only)]
-        [DataRow(TestDeviceType.Sasl, Client.TransportType.Amqp_WebSocket_Only)]
-        [DataRow(TestDeviceType.Sasl, Client.TransportType.Mqtt_Tcp_Only)]
-        [DataRow(TestDeviceType.Sasl, Client.TransportType.Mqtt_WebSocket_Only)]
-        [DataRow(TestDeviceType.Sasl, Client.TransportType.Http1)]
-        [DataRow(TestDeviceType.X509, Client.TransportType.Amqp_Tcp_Only)]
-        [DataRow(TestDeviceType.X509, Client.TransportType.Amqp_WebSocket_Only)]
-        [DataRow(TestDeviceType.X509, Client.TransportType.Mqtt_Tcp_Only)]
-        [DataRow(TestDeviceType.X509, Client.TransportType.Mqtt_WebSocket_Only)]
-        [DataRow(TestDeviceType.X509, Client.TransportType.Http1)]
-        public async Task DeviceClient_SendSingleMessageAsync(TestDeviceType testDeviceType, Client.TransportType transportType)
+        public MessageSendE2ETests()
         {
-            await SendSingleMessageAsync(testDeviceType, transportType).ConfigureAwait(false);
+            _listener = TestConfig.StartEventListener();
         }
 
-        [DataTestMethod]
-        [DataRow(Client.TransportType.Amqp_Tcp_Only)]
-        [DataRow(Client.TransportType.Amqp_WebSocket_Only)]
-        public async Task DeviceClient_WithAmqpHeartbeat_SendSingleMessageAsync(Client.TransportType transportType)
+        [TestMethod]
+        public async Task Message_DeviceSendSingleMessage_Amqp()
         {
-            var amqpTransportSettings = new AmqpTransportSettings(transportType)
-            {
-                IdleTimeout = TimeSpan.FromMinutes(2)
-            };
-            var transportSettings = new ITransportSettings[] { amqpTransportSettings };
-            await SendSingleMessageAsync(TestDeviceType.Sasl, transportSettings).ConfigureAwait(false);
+            await SendSingleMessage(TestDeviceType.Sasl, Client.TransportType.Amqp_Tcp_Only).ConfigureAwait(false);
         }
 
+        [TestMethod]
+        public async Task Message_DeviceSendSingleMessage_AmqpWs()
+        {
+            await SendSingleMessage(TestDeviceType.Sasl, Client.TransportType.Amqp_WebSocket_Only).ConfigureAwait(false);
+        }
+
+        [TestMethod]
+        public async Task Message_DeviceSendSingleMessage_Mqtt()
+        {
+            await SendSingleMessage(TestDeviceType.Sasl, Client.TransportType.Mqtt_Tcp_Only).ConfigureAwait(false);
+        }
+
+        [TestMethod]
+        public async Task Message_DeviceSendSingleMessage_MqttWs()
+        {
+            await SendSingleMessage(TestDeviceType.Sasl, Client.TransportType.Mqtt_WebSocket_Only).ConfigureAwait(false);
+        }
+
+        [TestMethod]
+        public async Task Message_DeviceSendSingleMessage_Http()
+        {
+            await SendSingleMessage(TestDeviceType.Sasl, Client.TransportType.Http1).ConfigureAwait(false);
+        }
+
+        [TestMethod]
+        public async Task Message_DeviceSendSingleMessage_Amqp_WithHeartbeats()
+        {
+            Client.AmqpTransportSettings amqpTransportSettings = new Client.AmqpTransportSettings(Client.TransportType.Amqp_Tcp_Only);
+            amqpTransportSettings.IdleTimeout = TimeSpan.FromMinutes(2);
+            ITransportSettings[] transportSettings = new ITransportSettings[] { amqpTransportSettings };
+            await SendSingleMessage(TestDeviceType.Sasl, transportSettings).ConfigureAwait(false);
+        }
+
+        [TestMethod]
+        public async Task Message_DeviceSendSingleMessage_AmqpWs_WithHeartbeats()
+        {
+            Client.AmqpTransportSettings amqpTransportSettings = new Client.AmqpTransportSettings(Client.TransportType.Amqp_WebSocket_Only);
+            amqpTransportSettings.IdleTimeout = TimeSpan.FromMinutes(2);
+            ITransportSettings[] transportSettings = new ITransportSettings[] { amqpTransportSettings };
+
+            await SendSingleMessage(TestDeviceType.Sasl, transportSettings).ConfigureAwait(false);
+        }
+
+        [TestMethod]
         [TestCategory("Proxy")]
         [TestCategory("LongRunning")]
-        [DataTestMethod]
-        [DataRow(TestDeviceType.Sasl)]
-        [DataRow(TestDeviceType.X509)]
-        public async Task DeviceClient_WithHttpProxy_SendSingleMessageAsync(TestDeviceType testDeviceType)
+        public async Task Message_DeviceSendSingleMessage_Http_WithProxy()
         {
-            var httpTransportSettings = new Http1TransportSettings
-            {
-                Proxy = new WebProxy(s_proxyServerAddress)
-            };
-            var transportSettings = new ITransportSettings[] { httpTransportSettings };
+            Client.Http1TransportSettings httpTransportSettings = new Client.Http1TransportSettings();
+            httpTransportSettings.Proxy = new WebProxy(ProxyServerAddress);
+            ITransportSettings[] transportSettings = new ITransportSettings[] { httpTransportSettings };
 
-            await SendSingleMessageAsync(testDeviceType, transportSettings).ConfigureAwait(false);
+            await SendSingleMessage(TestDeviceType.Sasl, transportSettings).ConfigureAwait(false);
         }
 
+        [TestMethod]
         [TestCategory("Proxy")]
-        [DataTestMethod]
-        [DataRow(TestDeviceType.Sasl)]
-        [DataRow(TestDeviceType.X509)]
-        public async Task DeviceClient_WithCustomProxy_SendSingleMessageAsync(TestDeviceType testDeviceType)
+        public async Task Message_DeviceSendSingleMessage_Http_WithCustomProxy()
         {
-            var httpTransportSettings = new Http1TransportSettings();
-            var proxy = new CustomWebProxy();
+            Http1TransportSettings httpTransportSettings = new Http1TransportSettings();
+            CustomWebProxy proxy = new CustomWebProxy();
             httpTransportSettings.Proxy = proxy;
-            var transportSettings = new ITransportSettings[] { httpTransportSettings };
+            ITransportSettings[] transportSettings = new ITransportSettings[] { httpTransportSettings };
 
-            await SendSingleMessageAsync(testDeviceType, transportSettings).ConfigureAwait(false);
+            await SendSingleMessage(TestDeviceType.Sasl, transportSettings).ConfigureAwait(false);
             Assert.AreNotEqual(proxy.Counter, 0);
         }
 
+        [TestMethod]
         [TestCategory("Proxy")]
         [TestCategory("LongRunning")]
-        [DataTestMethod]
-        [DataRow(TestDeviceType.Sasl)]
-        [DataRow(TestDeviceType.X509)]
-        public async Task DeviceClient_WithAmqpWsProxy_SendSingleMessageAsync(TestDeviceType testDeviceType)
+        public async Task Message_DeviceSendSingleMessage_AmqpWs_WithProxy()
         {
-            var amqpTransportSettings = new AmqpTransportSettings(Client.TransportType.Amqp_WebSocket_Only)
-            {
-                Proxy = new WebProxy(s_proxyServerAddress)
-            };
-            var transportSettings = new ITransportSettings[] { amqpTransportSettings };
+            Client.AmqpTransportSettings amqpTransportSettings = new Client.AmqpTransportSettings(Client.TransportType.Amqp_WebSocket_Only);
+            amqpTransportSettings.Proxy = new WebProxy(ProxyServerAddress);
+            ITransportSettings[] transportSettings = new ITransportSettings[] { amqpTransportSettings };
 
-            await SendSingleMessageAsync(testDeviceType, transportSettings).ConfigureAwait(false);
-        }
-
-        [TestCategory("Proxy")]
-        [DataTestMethod]
-        [DataRow(TestDeviceType.Sasl)]
-        [DataRow(TestDeviceType.X509)]
-        public async Task DeviceClient_WithMqttWsProxy_SendSingleMessageAsync(TestDeviceType testDeviceType)
-        {
-            var mqttTransportSettings = new MqttTransportSettings(Client.TransportType.Mqtt_WebSocket_Only)
-            {
-                Proxy = new WebProxy(s_proxyServerAddress)
-            };
-            var transportSettings = new ITransportSettings[] { mqttTransportSettings };
-
-            await SendSingleMessageAsync(testDeviceType, transportSettings).ConfigureAwait(false);
+            await SendSingleMessage(TestDeviceType.Sasl, transportSettings).ConfigureAwait(false);
         }
 
         [TestMethod]
         [TestCategory("Proxy")]
-        public async Task ModuleClient_WithAmqpWsProxy_SendSingleMessageAsync()
+        public async Task Message_DeviceSendSingleMessage_MqttWs_WithProxy()
         {
-            var amqpTransportSettings = new AmqpTransportSettings(Client.TransportType.Amqp_WebSocket_Only)
-            {
-                Proxy = new WebProxy(s_proxyServerAddress)
-            };
-            var transportSettings = new ITransportSettings[] { amqpTransportSettings };
-
-            await SendSingleMessageModuleAsync(transportSettings).ConfigureAwait(false);
-        }
-
-        [TestMethod]
-        [TestCategory("Proxy")]
-        public async Task ModuleClient_WithMqttWsProxy_SendSingleMessageAsync()
-        {
-            MqttTransportSettings mqttTransportSettings = new MqttTransportSettings(Client.TransportType.Mqtt_WebSocket_Only)
-            {
-                Proxy = new WebProxy(s_proxyServerAddress)
-            };
+            Client.Transport.Mqtt.MqttTransportSettings mqttTransportSettings =
+                new Client.Transport.Mqtt.MqttTransportSettings(Client.TransportType.Mqtt_WebSocket_Only);
+            mqttTransportSettings.Proxy = new WebProxy(ProxyServerAddress);
             ITransportSettings[] transportSettings = new ITransportSettings[] { mqttTransportSettings };
 
-            await SendSingleMessageModuleAsync(transportSettings).ConfigureAwait(false);
+            await SendSingleMessage(TestDeviceType.Sasl, transportSettings).ConfigureAwait(false);
         }
 
-        [DataTestMethod]
-        [DataRow(TestDeviceType.Sasl, Client.TransportType.Amqp_Tcp_Only)]
-        [DataRow(TestDeviceType.Sasl, Client.TransportType.Amqp_WebSocket_Only)]
-        [DataRow(TestDeviceType.Sasl, Client.TransportType.Mqtt_Tcp_Only)]
-        [DataRow(TestDeviceType.Sasl, Client.TransportType.Mqtt_WebSocket_Only)]
-        [DataRow(TestDeviceType.Sasl, Client.TransportType.Http1)]
-        [DataRow(TestDeviceType.X509, Client.TransportType.Amqp_Tcp_Only)]
-        [DataRow(TestDeviceType.X509, Client.TransportType.Amqp_WebSocket_Only)]
-        [DataRow(TestDeviceType.X509, Client.TransportType.Mqtt_Tcp_Only)]
-        [DataRow(TestDeviceType.X509, Client.TransportType.Mqtt_WebSocket_Only)]
-        [DataRow(TestDeviceType.X509, Client.TransportType.Http1)]
-        public async Task DeviceClient_SendBatchMessagesAsync(TestDeviceType testDeviceType, Client.TransportType transportType)
+        [TestMethod]
+        [TestCategory("Proxy")]
+        public async Task Message_ModuleSendSingleMessage_AmqpWs_WithProxy()
         {
-            await SendBatchMessagesAsync(testDeviceType, transportType).ConfigureAwait(false);
+            Client.AmqpTransportSettings amqpTransportSettings = new Client.AmqpTransportSettings(Client.TransportType.Amqp_WebSocket_Only);
+            amqpTransportSettings.Proxy = new WebProxy(ProxyServerAddress);
+            ITransportSettings[] transportSettings = new ITransportSettings[] { amqpTransportSettings };
+
+            await SendSingleMessageModule(transportSettings).ConfigureAwait(false);
         }
 
-        [DataTestMethod]
-        [DataRow(TestDeviceType.Sasl, Client.TransportType.Amqp_Tcp_Only)]
-        [DataRow(TestDeviceType.Sasl, Client.TransportType.Amqp_WebSocket_Only)]
-        [DataRow(TestDeviceType.Sasl, Client.TransportType.Mqtt_Tcp_Only)]
-        [DataRow(TestDeviceType.Sasl, Client.TransportType.Mqtt_WebSocket_Only)]
-        [DataRow(TestDeviceType.Sasl, Client.TransportType.Http1)]
-        [DataRow(TestDeviceType.X509, Client.TransportType.Amqp_Tcp_Only)]
-        [DataRow(TestDeviceType.X509, Client.TransportType.Amqp_WebSocket_Only)]
-        [DataRow(TestDeviceType.X509, Client.TransportType.Mqtt_Tcp_Only)]
-        [DataRow(TestDeviceType.X509, Client.TransportType.Mqtt_WebSocket_Only)]
-        [DataRow(TestDeviceType.X509, Client.TransportType.Http1)]
-        public async Task DeviceClient_SendLargeMessageAsync(TestDeviceType testDeviceType, Client.TransportType transportType)
+        [TestMethod]
+        [TestCategory("Proxy")]
+        public async Task Message_ModuleSendSingleMessage_MqttWs_WithProxy()
         {
-            TestDevice testDevice = await TestDevice.GetTestDeviceAsync(_devicePrefix, testDeviceType).ConfigureAwait(false);
-            using DeviceClient deviceClient = testDevice.CreateDeviceClient(transportType);
+            Client.Transport.Mqtt.MqttTransportSettings mqttTransportSettings =
+                new Client.Transport.Mqtt.MqttTransportSettings(Client.TransportType.Mqtt_WebSocket_Only);
+            mqttTransportSettings.Proxy = new WebProxy(ProxyServerAddress);
+            ITransportSettings[] transportSettings = new ITransportSettings[] { mqttTransportSettings };
 
-            using var message = new Client.Message(Encoding.UTF8.GetBytes(new string('*', LargeMessageSize)));
-            await deviceClient.SendEventAsync(message).ConfigureAwait(false);
+            await SendSingleMessageModule(transportSettings).ConfigureAwait(false);
+        }
+
+        [TestMethod]
+        public async Task X509_DeviceSendSingleMessage_Amqp()
+        {
+            await SendSingleMessage(TestDeviceType.X509, Client.TransportType.Amqp_Tcp_Only).ConfigureAwait(false);
+        }
+
+        [TestMethod]
+        public async Task X509_DeviceSendSingleMessage_AmqpWs()
+        {
+            await SendSingleMessage(TestDeviceType.X509, Client.TransportType.Amqp_WebSocket_Only).ConfigureAwait(false);
+        }
+
+        [TestMethod]
+        [TestCategory("LongRunning")]
+        public async Task X509_DeviceSendSingleMessage_Mqtt()
+        {
+            await SendSingleMessage(TestDeviceType.X509, Client.TransportType.Mqtt_Tcp_Only).ConfigureAwait(false);
+        }
+
+        [TestMethod]
+        public async Task X509_DeviceSendSingleMessage_MqttWs()
+        {
+            await SendSingleMessage(TestDeviceType.X509, Client.TransportType.Mqtt_WebSocket_Only).ConfigureAwait(false);
+        }
+
+        [TestMethod]
+        public async Task X509_DeviceSendSingleMessage_Http()
+        {
+            await SendSingleMessage(TestDeviceType.X509, Client.TransportType.Http1).ConfigureAwait(false);
+        }
+
+        [TestMethod]
+        public async Task X509_DeviceSendBatchMessages_Amqp()
+        {
+            await SendBatchMessages(TestDeviceType.X509, Client.TransportType.Amqp_Tcp_Only).ConfigureAwait(false);
+        }
+
+        [TestMethod]
+        public async Task X509_DeviceSendBatchMessages_AmqpWs()
+        {
+            await SendBatchMessages(TestDeviceType.X509, Client.TransportType.Amqp_WebSocket_Only).ConfigureAwait(false);
+        }
+
+        [TestMethod]
+        [TestCategory("LongRunning")]
+        public async Task X509_DeviceSendBatchMessages_Mqtt()
+        {
+            await SendBatchMessages(TestDeviceType.X509, Client.TransportType.Mqtt_Tcp_Only).ConfigureAwait(false);
+        }
+
+        [TestMethod]
+        public async Task X509_DeviceSendBatchMessages_MqttWs()
+        {
+            await SendBatchMessages(TestDeviceType.X509, Client.TransportType.Mqtt_WebSocket_Only).ConfigureAwait(false);
+        }
+
+        [TestMethod]
+        public async Task X509_DeviceSendBatchMessages_Http()
+        {
+            await SendBatchMessages(TestDeviceType.X509, Client.TransportType.Http1).ConfigureAwait(false);
         }
 
         [TestMethod]
         [ExpectedException(typeof(MessageTooLargeException))]
-        public async Task DeviceClient_LargeTopicName_ThrowsException_SendMessageAsync()
+        public async Task Message_ClientThrowsForMqttTopicNameTooLong()
         {
-            TestDevice testDevice = await TestDevice.GetTestDeviceAsync(_devicePrefix).ConfigureAwait(false);
+            TestDevice testDevice = await TestDevice.GetTestDeviceAsync(DevicePrefix).ConfigureAwait(false);
             using DeviceClient deviceClient = testDevice.CreateDeviceClient(Client.TransportType.Mqtt);
 
             await deviceClient.OpenAsync().ConfigureAwait(false);
@@ -205,9 +235,9 @@ namespace Microsoft.Azure.Devices.E2ETests
             await deviceClient.SendEventAsync(msg).ConfigureAwait(false);
         }
 
-        private async Task SendSingleMessageAsync(TestDeviceType type, Client.TransportType transport)
+        private async Task SendSingleMessage(TestDeviceType type, Client.TransportType transport)
         {
-            TestDevice testDevice = await TestDevice.GetTestDeviceAsync(_devicePrefix, type).ConfigureAwait(false);
+            TestDevice testDevice = await TestDevice.GetTestDeviceAsync(DevicePrefix, type).ConfigureAwait(false);
             using DeviceClient deviceClient = testDevice.CreateDeviceClient(transport);
 
             await deviceClient.OpenAsync().ConfigureAwait(false);
@@ -215,9 +245,9 @@ namespace Microsoft.Azure.Devices.E2ETests
             await deviceClient.CloseAsync().ConfigureAwait(false);
         }
 
-        private async Task SendBatchMessagesAsync(TestDeviceType type, Client.TransportType transport)
+        private async Task SendBatchMessages(TestDeviceType type, Client.TransportType transport)
         {
-            TestDevice testDevice = await TestDevice.GetTestDeviceAsync(_devicePrefix, type).ConfigureAwait(false);
+            TestDevice testDevice = await TestDevice.GetTestDeviceAsync(DevicePrefix, type).ConfigureAwait(false);
             using DeviceClient deviceClient = testDevice.CreateDeviceClient(transport);
 
             await deviceClient.OpenAsync().ConfigureAwait(false);
@@ -225,9 +255,9 @@ namespace Microsoft.Azure.Devices.E2ETests
             await deviceClient.CloseAsync().ConfigureAwait(false);
         }
 
-        private async Task SendSingleMessageAsync(TestDeviceType type, ITransportSettings[] transportSettings)
+        private async Task SendSingleMessage(TestDeviceType type, ITransportSettings[] transportSettings)
         {
-            TestDevice testDevice = await TestDevice.GetTestDeviceAsync(_devicePrefix, type).ConfigureAwait(false);
+            TestDevice testDevice = await TestDevice.GetTestDeviceAsync(DevicePrefix, type).ConfigureAwait(false);
             using DeviceClient deviceClient = testDevice.CreateDeviceClient(transportSettings);
 
             await deviceClient.OpenAsync().ConfigureAwait(false);
@@ -235,9 +265,9 @@ namespace Microsoft.Azure.Devices.E2ETests
             await deviceClient.CloseAsync().ConfigureAwait(false);
         }
 
-        private async Task SendSingleMessageModuleAsync(ITransportSettings[] transportSettings)
+        private async Task SendSingleMessageModule(ITransportSettings[] transportSettings)
         {
-            TestModule testModule = await TestModule.GetTestModuleAsync(_devicePrefix, _modulePrefix).ConfigureAwait(false);
+            TestModule testModule = await TestModule.GetTestModuleAsync(DevicePrefix, ModulePrefix).ConfigureAwait(false);
             using var moduleClient = ModuleClient.CreateFromConnectionString(testModule.ConnectionString, transportSettings);
 
             await moduleClient.OpenAsync().ConfigureAwait(false);
@@ -247,7 +277,7 @@ namespace Microsoft.Azure.Devices.E2ETests
 
         public static async Task SendSingleMessageAndVerifyAsync(DeviceClient deviceClient, string deviceId)
         {
-            (Client.Message testMessage, _, string payload, string p1Value) = ComposeD2cTestMessage();
+            (Client.Message testMessage, string messageId, string payload, string p1Value) = ComposeD2cTestMessage();
 
             using (testMessage)
             {
@@ -265,7 +295,7 @@ namespace Microsoft.Azure.Devices.E2ETests
             try
             {
                 var props = new List<Tuple<string, string>>();
-                for (int i = 0; i < BatchMessageCount; i++)
+                for (int i = 0; i < MESSAGE_BATCH_COUNT; i++)
                 {
                     (Client.Message testMessage, string messageId, string payload, string p1Value) = ComposeD2cTestMessage();
                     messages.Add(testMessage);
@@ -291,7 +321,7 @@ namespace Microsoft.Azure.Devices.E2ETests
 
         private async Task SendSingleMessageModuleAndVerifyAsync(ModuleClient moduleClient, string deviceId)
         {
-            (Client.Message testMessage, _, string payload, string p1Value) = ComposeD2cTestMessage();
+            (Client.Message testMessage, string messageId, string payload, string p1Value) = ComposeD2cTestMessage();
 
             using (testMessage)
             {
@@ -304,11 +334,11 @@ namespace Microsoft.Azure.Devices.E2ETests
 
         public static (Client.Message message, string messageId, string payload, string p1Value) ComposeD2cTestMessage()
         {
-            string messageId = Guid.NewGuid().ToString();
-            string payload = Guid.NewGuid().ToString();
-            string p1Value = Guid.NewGuid().ToString();
+            var messageId = Guid.NewGuid().ToString();
+            var payload = Guid.NewGuid().ToString();
+            var p1Value = Guid.NewGuid().ToString();
 
-            s_log.WriteLine($"{nameof(ComposeD2cTestMessage)}: messageId='{messageId}' payload='{payload}' p1Value='{p1Value}'");
+            _log.WriteLine($"{nameof(ComposeD2cTestMessage)}: messageId='{messageId}' payload='{payload}' p1Value='{p1Value}'");
             var message = new Client.Message(Encoding.UTF8.GetBytes(payload))
             {
                 MessageId = messageId,
