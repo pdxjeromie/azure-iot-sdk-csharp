@@ -1,5 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
-// Licensed under the MIT license. See LICENSE file in the project root for full license information
+// Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
 using System.Security.Cryptography.X509Certificates;
@@ -191,6 +191,32 @@ namespace Microsoft.Azure.Devices.Client.Test
 
             // assert
             Assert.IsFalse(transportSetting.AmqpConnectionPoolSettings.Pooling, "Should match initialized value");
+        }
+
+        [TestMethod]
+        public void AmqpTransportSettings_SetSocketBufferSize()
+        {
+            // arrange
+            int tcpTransportBufferSize = 3000;
+
+            // act
+            var transportSetting = new AmqpTransportSettings(TransportType.Amqp_Tcp_Only)
+            {
+                TcpTransportBufferSize = tcpTransportBufferSize,
+            };
+
+            // assert
+            Assert.AreEqual(tcpTransportBufferSize, transportSetting.TcpTransportBufferSize, "Should match initialized value");
+        }
+
+        [TestMethod]
+        public void AmqpTransportSettings_DefaultSocketBufferSizeIsNotSet()
+        {
+            // act
+            var transportSetting = new AmqpTransportSettings(TransportType.Amqp_Tcp_Only);
+
+            // assert
+            Assert.IsNull(transportSetting.TcpTransportBufferSize, "Tcp transport buffer should not have default value");
         }
 
         [TestMethod]
